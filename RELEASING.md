@@ -23,7 +23,10 @@ CI uses the exact versions and SHA-256 downloads in
 [`ci/toolchain.lock`](ci/toolchain.lock), full commit SHAs for GitHub Actions,
 and explicit runner/compiler names. The workflows do not use `*-latest`, apt
 installs, or floating tool versions. `ci/verify-toolchain.sh` fails the job
-when the image no longer matches.
+when the image no longer matches. CodeQL uses the commit-pinned action and the
+SHA-256-locked CodeQL 2.27.4 bundle from the same file. Dependabot does not update
+`github/codeql-action`; update the action, bundle version, URL, SHA-256, and lock
+together, then let the CodeQL workflow validate the pins.
 
 Refresh the lock deliberately, run the full CI workflow, and review the diff.
 Pinned tools do not receive automatic security updates. GitHub-hosted runner

@@ -129,6 +129,27 @@ check_pkg_config() {
     printf 'pkg-config: %s\n' "$version"
 }
 
+check_codeql_pins() {
+    local workflow="$root/.github/workflows/codeql.yml"
+    local count=0 sha
+    [[ -f "$workflow" ]] || fail "missing $workflow"
+    while IFS= read -r sha; do
+        [[ -n "$sha" ]] || continue
+        ((count += 1))
+        [[ "$sha" == "$CODEQL_ACTION_SHA" ]] || fail \
+            "codeql.yml uses action $sha; update CODEQL_VERSION, the bundle URL and its SHA-256 in ci/toolchain.lock in the same change"
+    done < <(
+        grep -E 'github/codeql-action/(init|analyze)@[0-9a-f]{40}' "$workflow" |
+            sed -E 's/.*@([0-9a-f]{40}).*/\1/'
+    )
+    [[ "$count" -eq 2 ]] ||
+        fail "expected two pinned CodeQL action uses in codeql.yml, found $count"
+    [[ "$CODEQL_BUNDLE_LINUX_X86_64_URL" == *"/codeql-bundle-v$CODEQL_VERSION/"* ]] ||
+        fail "CodeQL bundle URL does not contain version $CODEQL_VERSION"
+    printf 'codeql action: %s\ncodeql bundle: %s\n' \
+        "$CODEQL_ACTION_SHA" "$CODEQL_VERSION"
+}
+
 if [[ $# -eq 0 ]]; then
     echo "usage: $0 <tool>..." >&2
     exit 2
@@ -150,6 +171,7 @@ for tool in "$@"; do
         jq) check_jq ;;
         gh) check_gh ;;
         pkg-config) check_pkg_config ;;
+        codeql-pins) check_codeql_pins ;;
         *)
             fail "unknown tool '$tool'"
             ;;
