@@ -1,0 +1,47 @@
+mpmc_queue
+Copyright (c) 2026 Mohammad Mahdi Abdollahpour (git@mohammadmahdi.com)
+
+This file and its modifications are subject to the Common Public Attribution
+License Version 1.0. A copy of the license is in LICENSE and at
+https://opensource.org/license/cpal-1-0.
+
+CPAL attribution information:
+
+  Attribution Copyright Notice: Copyright (c) 2026 Mohammad Mahdi Abdollahpour
+  Attribution Phrase: mpmc_queue by Mohammad Mahdi Abdollahpour, CPAL-1.0
+
+Display of this attribution is required in Larger Works that have a graphical
+user interface at launch, as described by CPAL Exhibit B. Headless products do
+not display it. Distributed or externally deployed modifications to covered
+files must be made available in source form under CPAL-1.0. Private internal
+modifications are not subject to the CPAL External Deployment
+source-availability obligation.
+
+The queue design and API are based on Erez Strauss's CppCon 2023 talk and the
+reference project below. This implementation is independent. The MIT notice
+below applies only to that upstream design attribution; it does not license
+this implementation. It is retained here for attribution:
+
+https://github.com/erez-strauss/lockfree_mpmc_queue
+
+MIT License
+
+Copyright (c) 2019 Erez Strauss
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

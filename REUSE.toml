@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "mpmc_queue"
+SPDX-PackageSupplier = "Mohammad Mahdi Abdollahpour <git@mohammadmahdi.com>"
+SPDX-PackageDownloadLocation = "NOASSERTION"
+
+[[annotations]]
+path = ["verification/*.tla", "verification/*.cfg", "CMakePresets.json"]
+SPDX-FileCopyrightText = "2026 Mohammad Mahdi Abdollahpour <git@mohammadmahdi.com>"
+SPDX-License-Identifier = "CPAL-1.0"

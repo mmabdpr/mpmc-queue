@@ -1,0 +1,432 @@
+# SPDX-FileCopyrightText: 2026 Mohammad Mahdi Abdollahpour <git@mohammadmahdi.com>
+# SPDX-License-Identifier: CPAL-1.0
+#
+# The contents of this file are subject to the Common Public Attribution License Version 1.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at https://opensource.org/license/cpal-1-0. The License is based on the Mozilla Public License Version 1.1 but Sections 14 and 15 have been added to cover use of software over a computer network and provide for limited attribution for the Original Developer. In addition, Exhibit A has been modified to be consistent with Exhibit B.
+# Software distributed under the License is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the specific language governing rights and limitations under the License.
+# The Original Code is mpmc_queue, a header-only C++20 bounded queue library.
+# The Original Developer is not separately identified and is the Initial Developer. If left blank, the Original Developer is the Initial Developer.
+# The Initial Developer of the Original Code is Mohammad Mahdi Abdollahpour. All portions of the code written by Mohammad Mahdi Abdollahpour are Copyright (c) 2026. All Rights Reserved.
+# Contributor: Mohammad Mahdi Abdollahpour.
+#
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-26.04
+            compiler: GCC 15.2
+            cxx: g++-15
+            verify: gcc cmake pkg-config
+            portable8: true
+            xcode: ''
+          - os: ubuntu-26.04
+            compiler: Clang 22.1
+            cxx: clang++-22
+            verify: clang cmake pkg-config
+            portable8: false
+            xcode: ''
+          - os: macos-26
+            compiler: Apple Clang 21.0
+            cxx: clang++
+            verify: appleclang cmake
+            portable8: false
+            xcode: /Applications/Xcode_26.6.app/Contents/Developer
+    env:
+      CXX: ${{ matrix.cxx }}
+      DEVELOPER_DIR: ${{ matrix.xcode }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode
+        if: runner.os == 'macOS'
+        run: |
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+
+      - name: Install pinned CMake
+        run: ./ci/install-tools.sh cmake
+
+      - name: Verify toolchain
+        run: ./ci/verify-toolchain.sh ${{ matrix.verify }}
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DMPMC_BUILD_TESTS=ON
+          -DMPMC_BUILD_EXAMPLES=ON
+          -DMPMC_BUILD_BENCHMARKS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Benchmark build and run (Linux)
+        if: runner.os == 'Linux'
+        run: timeout 180s ./build/benchmarks/mpmc_benchmark
+
+      - name: Benchmark portable 8-byte path (Linux, GCC)
+        if: matrix.portable8
+        run: |
+          set -euo pipefail
+
+          # Force the portable path even on a 16-byte-capable host: no -mcx16
+          # and selected 8-byte cells.  This is a separate build so the main
+          # configuration keeps its normal 8/16-byte coverage.
+          if ! cmake -S . -B build-8b \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+              -DMPMC_BUILD_TESTS=OFF \
+              -DMPMC_BUILD_EXAMPLES=OFF \
+              -DMPMC_BUILD_BENCHMARKS=ON \
+              -DMPMC_ENABLE_MCX16=OFF \
+              -DMPMC_FORCE_8_BYTE_CELLS=ON \
+              > build-8b-configure.log 2>&1; then
+            cat build-8b-configure.log
+            exit 1
+          fi
+          cat build-8b-configure.log
+          grep -q '16-byte=OFF' build-8b-configure.log
+          cmake --build build-8b --target mpmc_benchmark --parallel
+
+          if ! timeout 120s ./build-8b/benchmarks/mpmc_benchmark --check \
+              > benchmark-8b.log 2>&1; then
+            cat benchmark-8b.log
+            exit 1
+          fi
+          cat benchmark-8b.log
+
+          # The benchmark's --check audits emitted rows: it fails when the
+          # 8-byte sweep is empty or when a disabled 16-byte cell still
+          # produces rows.  Assert its verdict and the configured state too.
+          grep -q 'benchmark self-check: PASS' benchmark-8b.log
+          grep -Eq '8-byte rows=[1-9][0-9]*, 16-byte rows=0' benchmark-8b.log
+          grep -Eq '^  cell 8B: .*lock_free=1 .*enabled=1$' benchmark-8b.log
+          grep -Eq '^  cell 16B: .*enabled=0$' benchmark-8b.log
+          echo "8-byte-only benchmark path verified: 8B sweep ran, no 16B rows, 8-byte ping-pong cell"
+
+      - name: Install and consume package
+        run: |
+          cmake --install build --prefix "$PWD/installed"
+          cmake -S tests/package_consumer -B consumer-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_PREFIX_PATH="$PWD/installed"
+          cmake --build consumer-build --parallel
+          ./consumer-build/mpmc_package_consumer
+          if [ -x ./consumer-build/mpmc_package_consumer_16 ]; then
+            ./consumer-build/mpmc_package_consumer_16
+          else
+            echo "16-byte cell is not lock-free for this compiler; skipped"
+          fi
+
+      - name: pkg-config and relocated prefix (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          rm -rf relocated
+          cp -a installed relocated
+          pc_file="$(find relocated -name mpmc_queue.pc -print -quit)"
+          test -n "$pc_file"
+          pc_dir="$(dirname "$pc_file")"
+          export PKG_CONFIG_PATH="$PWD/$pc_dir"
+          pkg-config --cflags --libs mpmc_queue
+          if pkg-config --cflags mpmc_queue | grep -q -- '-std='; then
+            echo "pkg-config must not force a C++ standard" >&2
+            exit 1
+          fi
+          # shellcheck disable=SC2046
+          "${CXX}" -std=c++20 tests/package_consumer/main.cpp \
+            $(pkg-config --cflags --libs mpmc_queue) -o pkg-consumer
+          ./pkg-consumer
+          # A consumer that explicitly selects C++23 must keep that mode.
+          # shellcheck disable=SC2046
+          "${CXX}" -std=c++23 tests/package_consumer/main.cpp \
+            $(pkg-config --cflags --libs mpmc_queue) -o pkg-consumer23
+          ./pkg-consumer23
+
+  sanitizers:
+    name: Ubuntu / ASan+UBSan
+    runs-on: ubuntu-26.04
+    env:
+      CXX: clang++-22
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned CMake
+        run: ./ci/install-tools.sh cmake
+
+      - name: Verify toolchain
+        run: ./ci/verify-toolchain.sh clang cmake
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++-22
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DMPMC_BUILD_TESTS=ON
+          -DMPMC_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure
+
+  thread-sanitizer:
+    name: Ubuntu / TSan (unit + stress)
+    runs-on: ubuntu-26.04
+    env:
+      CXX: clang++-22
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned CMake
+        run: ./ci/install-tools.sh cmake
+
+      - name: Verify toolchain
+        run: ./ci/verify-toolchain.sh clang cmake
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++-22
+          -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
+          -DMPMC_BUILD_TESTS=ON
+          -DMPMC_BUILD_EXAMPLES=OFF
+          -DMPMC_BUILD_BENCHMARKS=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test (in-process; shared-memory IPC is covered elsewhere)
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadline_ms=2000
+        run: ctest --test-dir build --output-on-failure -L 'unit|stress'
+
+  formatting:
+    name: clang-format changed lines
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The changed-lines check diffs against the previous push tip or the
+          # pull-request base.  A shallow clone does not contain those commits,
+          # and a missing base must not silently disable the check.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.14.10'
+
+      - name: Install pinned clang-format
+        env:
+          PIP_DISABLE_PIP_VERSION_CHECK: 1
+        run: ./ci/install-tools.sh clang-format
+
+      - name: Verify toolchain
+        run: ./ci/verify-toolchain.sh python clang-format
+
+      - name: Resolve changed-lines base
+        id: format-base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          is_null_sha() {
+            case "$1" in
+              '' | *[!0]*) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
+          has_commit() {
+            git rev-parse --verify --quiet "$1^{commit}" >/dev/null 2>&1
+          }
+
+          fail() {
+            echo "::error::$*" >&2
+            exit 1
+          }
+
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            fail "the checkout is shallow, so the formatting base may be missing; configure actions/checkout with fetch-depth: 0"
+          fi
+
+          base=""
+          case "$EVENT_NAME" in
+            pull_request)
+              if [ -z "$PR_BASE_SHA" ] || is_null_sha "$PR_BASE_SHA"; then
+                fail "pull_request event did not provide a usable base.sha"
+              fi
+              base="$PR_BASE_SHA"
+              if ! has_commit "$base"; then
+                echo "PR base $base is not local; fetching it explicitly"
+                git fetch --no-tags origin "$base" >/dev/null 2>&1 || true
+              fi
+              if ! has_commit "$base" && [ -n "$PR_BASE_REF" ]; then
+                git fetch --no-tags origin \
+                  "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF" \
+                  >/dev/null 2>&1 || true
+              fi
+              if ! has_commit "$base"; then
+                fail "PR base $base is not available even after fetching; cannot determine changed lines"
+              fi
+              ;;
+            push)
+              # The previous tip of the ref is the correct base for a push; an
+              # all-zero value means the ref was created.  HEAD^1 only
+              # covers the last commit of a multi-commit push, so prefer the
+              # event value whenever it is usable.
+              if [ -n "$PUSH_BEFORE_SHA" ] && ! is_null_sha "$PUSH_BEFORE_SHA"; then
+                base="$PUSH_BEFORE_SHA"
+                if ! has_commit "$base"; then
+                  echo "Push-before $base is not local; fetching it explicitly"
+                  git fetch --no-tags origin "$base" >/dev/null 2>&1 || true
+                fi
+                if ! has_commit "$base"; then
+                  echo "::warning::Push-before $base is unavailable (forced push?); falling back to the default-branch merge base"
+                  base=""
+                fi
+              fi
+              if [ -z "$base" ] && [ -n "$DEFAULT_BRANCH" ]; then
+                git fetch --no-tags origin \
+                  "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" \
+                  >/dev/null 2>&1 || true
+                base="$(git merge-base "refs/remotes/origin/$DEFAULT_BRANCH" HEAD 2>/dev/null || true)"
+                if [ -n "$base" ] && [ "$base" = "$(git rev-parse HEAD)" ]; then
+                  # A newly pushed default branch has no distinct merge base;
+                  # fall through to HEAD^1 or the empty tree below.
+                  base=""
+                fi
+              fi
+              ;;
+          esac
+
+          if [ -z "$base" ]; then
+            if has_commit "HEAD^1"; then
+              base="$(git rev-parse --verify "HEAD^1^{commit}")"
+              echo "Using HEAD^1 as the formatting base"
+            elif [ "$(git rev-list --count HEAD)" -eq 1 ]; then
+              # The initial commit has no parent, so every line is new.
+              base="$(git hash-object -t tree /dev/null)"
+              echo "Initial commit; comparing against the empty tree"
+            else
+              fail "cannot determine a formatting base (event=$EVENT_NAME, push-before='${PUSH_BEFORE_SHA}', pr-base='${PR_BASE_SHA}')"
+            fi
+          fi
+
+          if ! git rev-parse --verify --quiet "$base^{tree}" >/dev/null 2>&1; then
+            fail "formatting base '$base' does not resolve to a tree in this repository"
+          fi
+          echo "Checking lines changed since $base"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Check changed C++ lines
+        env:
+          BASE: ${{ steps.format-base.outputs.base }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE" ]; then
+            echo "::error::no formatting base revision was resolved" >&2
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "$BASE^{tree}" >/dev/null 2>&1; then
+            echo "::error::formatting base $BASE is not present; refusing to skip the check" >&2
+            exit 1
+          fi
+          git diff -U0 "$BASE" -- '*.hpp' '*.cpp' '*.h' '*.cc' > format.diff
+          if [ ! -s format.diff ]; then
+            echo "No changed C++ files"
+            exit 0
+          fi
+          if command -v clang-format-diff >/dev/null 2>&1; then
+            patch="$(clang-format-diff -p1 -style=file < format.diff)"
+            if [ -n "$patch" ]; then
+              printf '%s\n' "$patch" >&2
+              echo "::error::clang-format requires changes" >&2
+              exit 1
+            fi
+          else
+            # Fallback: check all changed C++ files in full.
+            git diff --name-only "$BASE" -- \
+              '*.hpp' '*.cpp' '*.h' '*.cc' |
+              xargs -r clang-format --dry-run --Werror
+          fi
+
+  tla-model-check:
+    name: TLA+ bounded model
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned JDK
+        run: ./ci/install-tools.sh jdk
+
+      - name: Verify toolchain
+        run: ./ci/verify-toolchain.sh java
+
+      - name: Model-check the publication protocol
+        env:
+          # run-tlc.sh keeps its scratch state under TMPDIR.  Give it a known
+          # parent so the failure-retained directory can be uploaded even
+          # though its exact mktemp path is only known at runtime.
+          TMPDIR: ${{ runner.temp }}/tlc
+        run: |
+          mkdir -p "$TMPDIR"
+          ./verification/run-tlc.sh
+
+      - name: Stage TLC failure artifacts
+        if: failure()
+        run: |
+          set -euo pipefail
+          src="${{ runner.temp }}/tlc"
+          dest="${{ runner.temp }}/tlc-artifacts"
+          mkdir -p "$dest"
+          shopt -s nullglob
+          preserved=("$src"/*/)
+          if [ "${#preserved[@]}" -eq 0 ]; then
+            echo "::warning::no preserved TLC scratch directory under $src; nothing to stage"
+            exit 0
+          fi
+          for dir in "${preserved[@]}"; do
+            cp -a "${dir%/}" "$dest/"
+          done
+          echo "Staged TLC failure artifacts:"
+          find "$dest" -mindepth 1 -maxdepth 2 -print | sort
+
+      - name: Upload TLC failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tla-tlc-failure-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/tlc-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
