@@ -1,0 +1,11 @@
+# Test-only exceptions to the repository checks.
+#
+# The test runner uses a dynamically allocated static registry and intentionally
+# exercises throwing payload and callback types.  Its diagnostic and cleanup
+# calls are not part of the library contract.
+InheritParentConfig: true
+Checks: >
+  -cert-err33-c,
+  -cert-err58-cpp,
+  -bugprone-throwing-static-initialization,
+  -bugprone-easily-swappable-parameters

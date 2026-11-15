@@ -1,0 +1,29 @@
+build/
+build-*/
+cmake-build-*/
+install/
+installed/
+consumer-build*/
+pkg-consumer
+benchmarks/comparison/deps/
+benchmarks/comparison/build/
+benchmarks/comparison/.tmp/
+benchmarks/comparison/.reference.*
+benchmarks/comparison/.RESULTS.*
+benchmarks/comparison/.SPSC.*
+benchmarks/comparison/results/
+compile_commands.json
+.cache/
+.ccache/
+.DS_Store
+*.o
+*.obj
+*.exe
+*.out
+__pycache__/
+*.pyc
+# TLC scratch state and counterexample traces.  verification/run-tlc.sh passes
+# an explicit temporary -metadir and runs the model from a copy, so these only
+# appear if TLC is invoked by hand.
+states/
+*_TTrace_*
