@@ -1,0 +1,9 @@
+# Benchmark-only exceptions to the repository checks.
+#
+# Benchmark entry points report usage errors on stderr; failure to write that
+# diagnostic is not actionable.  Their positional numeric parameters form a
+# deliberate command-line/reporting interface.
+InheritParentConfig: true
+Checks: >
+  -cert-err33-c,
+  -bugprone-easily-swappable-parameters

@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "mpmc_queue"
+SPDX-PackageSupplier = "Mohammad Mahdi Abdollahpour <git@mohammadmahdi.com>"
+SPDX-PackageDownloadLocation = "NOASSERTION"
+
+[[annotations]]
+path = ["verification/*.cfg", "CMakePresets.json", ".clang-format", ".clang-tidy", ".gitignore", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "RELEASING.md", "SECURITY.md", "REUSE.toml", "docs/*.md", "verification/README.md", "benchmarks/comparison/*.md", "benchmarks/comparison/reference.json"]
+SPDX-FileCopyrightText = "2026 Mohammad Mahdi Abdollahpour <git@mohammadmahdi.com>"
+SPDX-License-Identifier = "CPAL-1.0"
