@@ -69,7 +69,7 @@ cmake --build --preset debug --target format-check
 
 CI checks changed lines against the pull-request base or previous push tip and
 requires a full-history checkout. CI uses the exact runner, compiler, CMake,
-Python, Java, and clang-format versions recorded in
+Python, Java, clang-format, and CodeQL versions recorded in
 [`ci/toolchain.lock`](ci/toolchain.lock); do not replace them with floating
 versions. Refresh that lock deliberately and run the full workflow after any
 change.

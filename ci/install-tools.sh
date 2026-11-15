@@ -17,7 +17,7 @@ source "$root/ci/toolchain.lock"
 
 tool="${1:-}"
 if [[ -z "$tool" ]]; then
-    echo "usage: $0 cmake|jdk|clang-format" >&2
+    echo "usage: $0 cmake|jdk|clang-format|codeql" >&2
     exit 2
 fi
 
@@ -129,10 +129,30 @@ install_clang_format() {
     "$venv/bin/clang-format" --version
 }
 
+install_codeql() {
+    local bundle
+    if [[ "$(uname -s)-$(uname -m)" != "Linux-x86_64" ]]; then
+        echo "the pinned CodeQL bundle is only defined for Linux x86_64" >&2
+        exit 1
+    fi
+    bundle="$tool_dir/codeql-bundle-$CODEQL_VERSION.tar.gz"
+    if [[ -f "$bundle" ]]; then
+        if [[ "$(sha256_file "$bundle")" != "$CODEQL_BUNDLE_LINUX_X86_64_SHA256" ]]; then
+            rm -f "$bundle"
+        fi
+    fi
+    if [[ ! -f "$bundle" ]]; then
+        download "$CODEQL_BUNDLE_LINUX_X86_64_URL" \
+            "$CODEQL_BUNDLE_LINUX_X86_64_SHA256" "$bundle"
+    fi
+    printf '%s\n' "$bundle"
+}
+
 case "$tool" in
     cmake) install_cmake ;;
     jdk) install_jdk ;;
     clang-format) install_clang_format ;;
+    codeql) install_codeql ;;
     *)
         echo "unknown tool: $tool" >&2
         exit 2

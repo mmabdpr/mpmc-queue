@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 Mohammad Mahdi Abdollahpour <git@mohammadmahdi.com>
+# SPDX-License-Identifier: CPAL-1.0
+#
+# The contents of this file are subject to the Common Public Attribution License Version 1.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at https://opensource.org/license/cpal-1-0. The License is based on the Mozilla Public License Version 1.1 but Sections 14 and 15 have been added to cover use of software over a computer network and provide for limited attribution for the Original Developer. In addition, Exhibit A has been modified to be consistent with Exhibit B.
+# Software distributed under the License is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the specific language governing rights and limitations under the License.
+# The Original Code is mpmc_queue, a header-only C++20 bounded queue library.
+# The Original Developer is not separately identified and is the Initial Developer. If left blank, the Original Developer is the Initial Developer.
+# The Initial Developer of the Original Code is Mohammad Mahdi Abdollahpour. All portions of the code written by Mohammad Mahdi Abdollahpour are Copyright (c) 2026. All Rights Reserved.
+# Contributor: Mohammad Mahdi Abdollahpour.
+#
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            build-mode: manual
+          - language: actions
+            build-mode: none
+          - language: python
+            build-mode: none
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned CodeQL action
+        run: ./ci/verify-toolchain.sh codeql-pins
+
+      - name: Set up pinned Python
+        if: matrix.language == 'python'
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.14.10'
+
+      - name: Verify pinned Python
+        if: matrix.language == 'python'
+        run: ./ci/verify-toolchain.sh python
+
+      - name: Install pinned CMake
+        if: matrix.language == 'c-cpp'
+        run: ./ci/install-tools.sh cmake
+
+      - name: Install pinned CodeQL bundle
+        id: codeql-tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$(./ci/install-tools.sh codeql)"
+          test -s "$bundle"
+          echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
+
+      - name: Verify build toolchain
+        if: matrix.language == 'c-cpp'
+        run: ./ci/verify-toolchain.sh clang cmake pkg-config
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          tools: ${{ steps.codeql-tools.outputs.bundle }}
+
+      - name: Build C++ template instantiations
+        if: matrix.language == 'c-cpp'
+        shell: bash
+        env:
+          CC: clang-22
+          CXX: clang++-22
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-codeql \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DMPMC_BUILD_TESTS=ON \
+            -DMPMC_BUILD_EXAMPLES=ON \
+            -DMPMC_BUILD_BENCHMARKS=OFF \
+            -DMPMC_BUILD_COMPARISON_BENCHMARKS=OFF \
+            -DMPMC_ENABLE_MCX16=ON \
+            -DMPMC_FORCE_8_BYTE_CELLS=OFF
+          cmake --build build-codeql --parallel 4
+          test -x build-codeql/tests/mpmc_tests
+          test -x build-codeql/tests/mpmc_stress_tests
+          test -x build-codeql/tests/mpmc_shared_memory_tests
+          test -x build-codeql/tests/mpmc_unique_ptr_tests
+          test -x build-codeql/tests/mpmc_expected_tests
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}
+          wait-for-processing: true

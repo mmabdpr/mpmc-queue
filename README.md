@@ -1,6 +1,7 @@
 # mpmc_queue
 
 [![CI](https://img.shields.io/github/actions/workflow/status/mmabdpr/mpmc-queue/ci.yml?branch=main&label=CI)](https://github.com/mmabdpr/mpmc-queue/actions/workflows/ci.yml?query=branch%3Amain)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/mmabdpr/mpmc-queue/codeql.yml?branch=main&label=CodeQL)](https://github.com/mmabdpr/mpmc-queue/actions/workflows/codeql.yml?query=branch%3Amain)
 [![Release](https://img.shields.io/github/v/release/mmabdpr/mpmc-queue?label=release&sort=semver)](https://github.com/mmabdpr/mpmc-queue/releases/latest)
 [![License: CPAL-1.0](https://img.shields.io/badge/license-CPAL--1.0-blue)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/20)
@@ -525,15 +526,24 @@ The runner verifies a pinned TLA+ tools jar, uses a temporary scratch directory,
 and retains counterexample artifacts on failure. See
 `verification/README.md` for the checked properties and limits.
 
+GitHub CodeQL scans the C++ headers as instantiated by the tests and examples,
+the Python tools, and the GitHub Actions workflows on pushes to `main`, pull
+requests, and a weekly schedule. Benchmarks and the separate package-consumer
+projects are not compiled under CodeQL. CI uses the pinned action and CodeQL
+bundle recorded in [`ci/toolchain.lock`](ci/toolchain.lock), a manual Clang 22.1
+build for the header templates, Python 3.14.10 for the Python scan, and the
+default security query suite. CodeQL does not model C++ memory ordering, so
+TSan, the stress tests, and the TLA+ model remain the concurrency checks.
+
 ### CI toolchain
 
 CI uses explicit runner images, compiler names, and hash-locked tool archives.
 The exact versions are in [`ci/toolchain.lock`](ci/toolchain.lock): Ubuntu 26.04
 with GCC 15.2 or Clang 22.1, macOS 26 with Xcode 26.6 and Apple Clang 21.0,
-CMake 4.5.0, Python 3.14.10, JDK 21.0.13+9, and clang-format 23.1.5. GitHub
-Actions are pinned to full commit SHAs. `ci/install-tools.sh` verifies every
-download against a SHA-256 digest, and `ci/verify-toolchain.sh` rejects version
-drift before the build starts.
+CMake 4.5.0, Python 3.14.10, JDK 21.0.13+9, clang-format 23.1.5, and the
+CodeQL 2.27.4 bundle. GitHub Actions are pinned to full commit SHAs.
+`ci/install-tools.sh` verifies every download against a SHA-256 digest, and
+`ci/verify-toolchain.sh` rejects version drift before the build starts.
 
 The GitHub-hosted runner kernel, image contents, hardware, and availability of
 the macOS/Xcode image remain external dependencies. The immutable release, its
